@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "puzzles": {
+    "hanoi": {
+      "n_range": [2, 3, 4, 5, 6, 7, 8, 9, 10],
+      "token_constrained_above_n": 7
+    },
+    "river_crossing": {
+      "boat_capacity": 3,
+      "n_range": [1, 2, 3, 4, 5],
+      "note": "N>5 with b=3 is mathematically unsolvable. Never test beyond n=5 with b=3."
+    }
+  },
+  "models": {
+    "claude-sonnet-4-6": {
+      "provider": "bedrock",
+      "model_id": "anthropic.claude-sonnet-4-6",
+      "default_max_tokens": 8192,
+      "thinking_tokens_available": true,
+      "default_thinking_budget": 5000
+    },
+    "gpt-4o": {
+      "provider": "openai",
+      "model_id": "gpt-4o",
+      "default_max_tokens": 4096,
+      "thinking_tokens_available": false
+    }
+  },
+  "token_budget_levels": {
+    "DEFAULT": null,
+    "DOUBLE": null,
+    "UNCAPPED": 32000
+  },
+  "conditions": ["STANDARD", "TOKEN_CONTROLLED", "STEPWISE", "FUNCTION", "GIVEN_ALGORITHM"],
+  "trials_per_cell": 5,
+  "token_constraint_threshold_n": 8,
+  "output_db": "report/results.duckdb",
+  "figures_dir": "outputs/figures",
+  "demo_config": {
+    "model": "claude-sonnet-4-6",
+    "puzzle": "hanoi",
+    "n_range": [3, 4, 5, 6, 7, 8],
+    "conditions": ["STANDARD", "TOKEN_CONTROLLED"],
+    "token_budgets": ["DEFAULT", "UNCAPPED"],
+    "trials_per_cell": 3,
+    "note": "Fast affordable run for broadcast asset generation"
+  }
+}
