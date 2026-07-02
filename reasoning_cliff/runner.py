@@ -17,6 +17,7 @@ from reasoning_cliff.models import ExperimentCondition, FailureType, TokenBudget
 from reasoning_cliff.puzzles.river_crossing import (
     generate_river_crossing_instance,
     parse_river_crossing_moves,
+    verify_river_crossing_solvability,
     verify_river_crossing_solution,
 )
 from reasoning_cliff.puzzles.tower_of_hanoi import (
@@ -250,9 +251,11 @@ def run_experiments(
 
         for puzzle in puzzles:
             for n in n_values:
-                if puzzle == "river_crossing" and n > 5:
-                    # Hard constraint for b=3 in v1.
-                    continue
+                if puzzle == "river_crossing":
+                    if n > 5:
+                        continue
+                    if not verify_river_crossing_solvability(n, 3):
+                        continue
                 for condition_name in conditions:
                     condition = _normalize_condition(condition_name)
                     budget_keys = token_budgets if condition == ExperimentCondition.TOKEN_CONTROLLED else [TokenBudget.DEFAULT.value]

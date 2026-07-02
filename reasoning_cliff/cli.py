@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 
+from reasoning_cliff.puzzles.river_crossing import verify_river_crossing_solvability
 from reasoning_cliff.runner import estimate_experiment_cost, run_experiments
 
 
@@ -19,6 +20,13 @@ def _parse_range(value: str) -> list[int]:
         start, end = value.split(":", 1)
         return list(range(int(start), int(end) + 1))
     return [int(v.strip()) for v in value.split(",") if v.strip()]
+
+
+def _filter_complexities_for_puzzles(puzzles: list[str], n_values: list[int]) -> list[int]:
+    if "river_crossing" not in puzzles:
+        return n_values
+    filtered = [n for n in n_values if n <= 5 and verify_river_crossing_solvability(n, 3)]
+    return filtered
 
 
 def _load_config(path: str) -> dict:
@@ -92,12 +100,15 @@ def main() -> None:
         return
 
     if args.command == "run":
+        puzzles = _parse_csv(args.puzzles)
+        n_values = _parse_range(args.complexity_range)
+        n_values = _filter_complexities_for_puzzles(puzzles, n_values)
         inserted = run_experiments(
             config_path=args.config,
             output_db=args.output_db,
             models=_parse_csv(args.models),
-            puzzles=_parse_csv(args.puzzles),
-            n_values=_parse_range(args.complexity_range),
+            puzzles=puzzles,
+            n_values=n_values,
             token_budgets=[v.upper() for v in _parse_csv(args.token_budgets)],
             trials=args.trials,
             conditions=[v.upper() for v in _parse_csv(args.conditions)],
