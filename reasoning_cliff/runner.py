@@ -259,10 +259,11 @@ def run_experiments(
                 for condition_name in conditions:
                     condition = _normalize_condition(condition_name)
                     budget_keys = token_budgets if condition == ExperimentCondition.TOKEN_CONTROLLED else [TokenBudget.DEFAULT.value]
+                    cell_trials: list[dict[str, Any]] = []
+
                     for budget_key in budget_keys:
                         budget = TokenBudget(budget_key)
                         max_tokens = budget_map[budget_key]
-                        pending_trials: list[dict[str, Any]] = []
 
                         for trial_idx in range(trials):
                             experiment_id = str(uuid.uuid4())
@@ -321,7 +322,7 @@ def run_experiments(
                                 continue
 
                             latency_ms = (time.perf_counter() - start) * 1000
-                            pending_trials.append(
+                            cell_trials.append(
                                 {
                                     "experiment_id": experiment_id,
                                     "puzzle_type": puzzle,
@@ -344,38 +345,44 @@ def run_experiments(
                                 }
                             )
 
-                        # Classify this budget cell after all trials are complete.
-                        budget_outcomes = {
-                            TokenBudget.DEFAULT.value: any(t["correct"] for t in pending_trials if t["token_budget"] == TokenBudget.DEFAULT),
-                            TokenBudget.DOUBLE.value: any(t["correct"] for t in pending_trials if t["token_budget"] == TokenBudget.DOUBLE),
-                            TokenBudget.UNCAPPED.value: any(t["correct"] for t in pending_trials if t["token_budget"] == TokenBudget.UNCAPPED),
-                        }
-                        trunc_detected_any = any(t["truncation_detected"] for t in pending_trials)
-                        cell_failure_type = classify_failure(budget_outcomes, truncation_detected=trunc_detected_any)
+                    # Classify this full cell after all budget runs complete.
+                    budget_outcomes = {
+                        TokenBudget.DEFAULT.value: any(
+                            t["correct"] for t in cell_trials if t["token_budget"] == TokenBudget.DEFAULT
+                        ),
+                        TokenBudget.DOUBLE.value: any(
+                            t["correct"] for t in cell_trials if t["token_budget"] == TokenBudget.DOUBLE
+                        ),
+                        TokenBudget.UNCAPPED.value: any(
+                            t["correct"] for t in cell_trials if t["token_budget"] == TokenBudget.UNCAPPED
+                        ),
+                    }
+                    trunc_detected_any = any(t["truncation_detected"] for t in cell_trials)
+                    cell_failure_type = classify_failure(budget_outcomes, truncation_detected=trunc_detected_any)
 
-                        for trial_data in pending_trials:
-                            trial = TrialResult(
-                                experiment_id=trial_data["experiment_id"],
-                                puzzle_type=trial_data["puzzle_type"],
-                                model=trial_data["model"],
-                                condition=trial_data["condition"],
-                                token_budget=trial_data["token_budget"],
-                                trial_index=trial_data["trial_index"],
-                                complexity=trial_data["complexity"],
-                                correct=trial_data["correct"],
-                                failure_type=FailureType.CLEAN if trial_data["correct"] else cell_failure_type,
-                                output_tokens=trial_data["output_tokens"],
-                                thinking_tokens=trial_data["thinking_tokens"],
-                                truncated=trial_data["truncated"],
-                                truncation_detected=trial_data["truncation_detected"],
-                                stop_reason=trial_data["stop_reason"],
-                                raw_response=trial_data["raw_response"],
-                                moves_output=trial_data["moves_output"],
-                                moves_required=trial_data["moves_required"],
-                                first_error_move=trial_data["first_error_move"],
-                                latency_ms=trial_data["latency_ms"],
-                            )
-                            insert_trial(output_db, trial)
-                            inserted += 1
+                    for trial_data in cell_trials:
+                        trial = TrialResult(
+                            experiment_id=trial_data["experiment_id"],
+                            puzzle_type=trial_data["puzzle_type"],
+                            model=trial_data["model"],
+                            condition=trial_data["condition"],
+                            token_budget=trial_data["token_budget"],
+                            trial_index=trial_data["trial_index"],
+                            complexity=trial_data["complexity"],
+                            correct=trial_data["correct"],
+                            failure_type=FailureType.CLEAN if trial_data["correct"] else cell_failure_type,
+                            output_tokens=trial_data["output_tokens"],
+                            thinking_tokens=trial_data["thinking_tokens"],
+                            truncated=trial_data["truncated"],
+                            truncation_detected=trial_data["truncation_detected"],
+                            stop_reason=trial_data["stop_reason"],
+                            raw_response=trial_data["raw_response"],
+                            moves_output=trial_data["moves_output"],
+                            moves_required=trial_data["moves_required"],
+                            first_error_move=trial_data["first_error_move"],
+                            latency_ms=trial_data["latency_ms"],
+                        )
+                        insert_trial(output_db, trial)
+                        inserted += 1
 
     return inserted
