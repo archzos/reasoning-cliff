@@ -39,3 +39,21 @@ pytest
 
 - Use GitHub issues for bugs and feature requests.
 - For vulnerabilities, do not open public issues. See `SECURITY.md`.
+
+## Issue triage and labels
+
+Use labels consistently for queueing and prioritization:
+
+- `priority:p0`: ship-blocking or methodology-integrity defects
+- `priority:p1`: important improvements needed for Day 1/Day 2 goals
+- `priority:p2`: useful follow-up or governance polish
+- `day-1`, `day-2`: delivery phase tracking
+- `puzzle`, `metrics`, `runner`, `plots`, `docs`, `ci`: component ownership
+- `extension`: explicitly out-of-scope for v1
+
+Triage policy:
+
+1. New bug/security-suspected issues: acknowledge within 72 hours.
+2. Apply `priority:*` and component label at triage time.
+3. If issue changes benchmark claims or failure typing, mark as `priority:p0`.
+4. Close only with one of: merged fix, duplicate, invalid, or wontfix with rationale.
