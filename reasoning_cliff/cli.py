@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 
-from reasoning_cliff.plots.visualizer import generate_all_plots
 from reasoning_cliff.runner import estimate_experiment_cost, run_experiments
 
 
@@ -44,6 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--trials", type=int, default=5)
     run.add_argument("--conditions", default="STANDARD,TOKEN_CONTROLLED,STEPWISE,FUNCTION")
     run.add_argument("--output-db", required=True)
+    run.add_argument("--live-adapters", action="store_true")
     run.add_argument("--dry-run", action="store_true")
 
     plot = sub.add_parser("plot")
@@ -80,7 +80,15 @@ def main() -> None:
             token_budgets=list(config["token_budget_levels"].keys()),
             trials_per_cell=config["trials_per_cell"],
         )
-        print(json.dumps(costs, indent=2))
+        total = round(sum(costs.values()), 4)
+        cells = (
+            len(models)
+            * len(["hanoi", "river_crossing"])
+            * len(n_values)
+            * config["trials_per_cell"]
+            * len(config["conditions"])
+        )
+        print(json.dumps({"per_model_usd": costs, "total_usd": total, "approx_cells": cells}, indent=2))
         return
 
     if args.command == "run":
@@ -94,11 +102,14 @@ def main() -> None:
             trials=args.trials,
             conditions=[v.upper() for v in _parse_csv(args.conditions)],
             dry_run=args.dry_run,
+            allow_live_adapters=args.live_adapters,
         )
         print(json.dumps({"inserted_rows": inserted, "db": args.output_db}, indent=2))
         return
 
     if args.command == "plot":
+        from reasoning_cliff.plots.visualizer import generate_all_plots
+
         if args.dry_run:
             print(json.dumps({"ok": True, "db": args.db, "output_dir": args.output_dir}, indent=2))
             return

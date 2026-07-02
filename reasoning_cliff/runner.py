@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import json
-import math
+import os
 import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from reasoning_cliff.adapters.bedrock_adapter import BedrockAdapter
+from reasoning_cliff.adapters.openai_adapter import OpenAIAdapter
 from reasoning_cliff.metrics import classify_failure
 from reasoning_cliff.models import ExperimentCondition, FailureType, TokenBudget, TrialResult
 from reasoning_cliff.puzzles.river_crossing import (
@@ -74,6 +76,38 @@ class MockReasoningAdapter:
             stop_reason="max_tokens" if truncated else "stop",
             latency_ms=latency_ms,
         )
+
+
+def _load_model_config(config_path: str) -> dict[str, Any]:
+    payload = json.loads(Path(config_path).read_text(encoding="utf-8"))
+    return dict(payload.get("models", {}))
+
+
+def _can_use_openai() -> bool:
+    return bool(os.getenv("OPENAI_API_KEY"))
+
+
+def _can_use_bedrock() -> bool:
+    return bool(os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION"))
+
+
+def _build_adapter(model: str, model_config: dict[str, Any], allow_live_adapters: bool) -> Any:
+    if not allow_live_adapters:
+        return MockReasoningAdapter(model)
+
+    config = model_config.get(model, {})
+    provider = str(config.get("provider", "")).lower()
+
+    if provider == "openai" and _can_use_openai():
+        return OpenAIAdapter(config.get("model_id", model))
+
+    if provider == "bedrock" and _can_use_bedrock():
+        return BedrockAdapter(
+            model_id=config.get("model_id", model),
+            region=os.getenv("AWS_REGION", "ap-south-1"),
+        )
+
+    return MockReasoningAdapter(model)
 
 
 def get_token_budgets(model: str) -> dict[str, int]:
@@ -196,14 +230,18 @@ def run_experiments(
     trials: int,
     conditions: list[str],
     dry_run: bool = False,
+    allow_live_adapters: bool = False,
 ) -> int:
     if dry_run:
         Path(config_path).read_text(encoding="utf-8")
         return 0
 
     initialize_db(output_db)
+    model_config = _load_model_config(config_path)
 
-    adapters: dict[str, Any] = {model: MockReasoningAdapter(model) for model in models}
+    adapters: dict[str, Any] = {
+        model: _build_adapter(model, model_config, allow_live_adapters=allow_live_adapters) for model in models
+    }
 
     inserted = 0
     for model in models:
@@ -221,8 +259,7 @@ def run_experiments(
                     for budget_key in budget_keys:
                         budget = TokenBudget(budget_key)
                         max_tokens = budget_map[budget_key]
-                        cell_correctness: dict[str, bool] = {}
-                        trunc_detected_any = False
+                        pending_trials: list[dict[str, Any]] = []
 
                         for trial_idx in range(trials):
                             experiment_id = str(uuid.uuid4())
@@ -281,38 +318,59 @@ def run_experiments(
                                 continue
 
                             latency_ms = (time.perf_counter() - start) * 1000
-                            cell_correctness[budget_key] = cell_correctness.get(budget_key, False) or correct
-                            trunc_detected_any = trunc_detected_any or truncation_detected
-
-                            failure_type = classify_failure(
+                            pending_trials.append(
                                 {
-                                    "DEFAULT": cell_correctness.get(TokenBudget.DEFAULT.value, False),
-                                    "DOUBLE": cell_correctness.get(TokenBudget.DOUBLE.value, False),
-                                    "UNCAPPED": cell_correctness.get(TokenBudget.UNCAPPED.value, False),
-                                },
-                                truncation_detected=trunc_detected_any,
+                                    "experiment_id": experiment_id,
+                                    "puzzle_type": puzzle,
+                                    "model": model,
+                                    "condition": condition,
+                                    "token_budget": budget,
+                                    "trial_index": trial_idx,
+                                    "complexity": n,
+                                    "correct": correct,
+                                    "output_tokens": output_tokens,
+                                    "thinking_tokens": thinking_tokens,
+                                    "truncated": truncated,
+                                    "truncation_detected": truncation_detected,
+                                    "stop_reason": stop_reason,
+                                    "raw_response": raw,
+                                    "moves_output": moves_output,
+                                    "moves_required": moves_required,
+                                    "first_error_move": first_error_move,
+                                    "latency_ms": latency_ms,
+                                }
                             )
 
+                        # Classify this budget cell after all trials are complete.
+                        budget_outcomes = {
+                            TokenBudget.DEFAULT.value: any(t["correct"] for t in pending_trials if t["token_budget"] == TokenBudget.DEFAULT),
+                            TokenBudget.DOUBLE.value: any(t["correct"] for t in pending_trials if t["token_budget"] == TokenBudget.DOUBLE),
+                            TokenBudget.UNCAPPED.value: any(t["correct"] for t in pending_trials if t["token_budget"] == TokenBudget.UNCAPPED),
+                        }
+                        trunc_detected_any = any(t["truncation_detected"] for t in pending_trials)
+                        cell_failure_type = classify_failure(budget_outcomes, truncation_detected=trunc_detected_any)
+
+                        for trial_data in pending_trials:
                             trial = TrialResult(
-                                experiment_id=experiment_id,
-                                puzzle_type=puzzle,
-                                model=model,
-                                condition=condition,
-                                token_budget=budget,
-                                trial_index=trial_idx,
-                                complexity=n,
-                                correct=correct,
-                                failure_type=failure_type if not correct else FailureType.CLEAN,
-                                output_tokens=output_tokens,
-                                thinking_tokens=thinking_tokens,
-                                truncated=truncated,
-                                truncation_detected=truncation_detected,
-                                stop_reason=stop_reason,
-                                raw_response=raw,
-                                moves_output=moves_output,
-                                moves_required=moves_required,
-                                first_error_move=first_error_move,
-                                latency_ms=latency_ms,
+                                experiment_id=trial_data["experiment_id"],
+                                puzzle_type=trial_data["puzzle_type"],
+                                model=trial_data["model"],
+                                condition=trial_data["condition"],
+                                token_budget=trial_data["token_budget"],
+                                trial_index=trial_data["trial_index"],
+                                complexity=trial_data["complexity"],
+                                correct=trial_data["correct"],
+                                failure_type=FailureType.CLEAN if trial_data["correct"] else cell_failure_type,
+                                output_tokens=trial_data["output_tokens"],
+                                thinking_tokens=trial_data["thinking_tokens"],
+                                truncated=trial_data["truncated"],
+                                truncation_detected=trial_data["truncation_detected"],
+                                stop_reason=trial_data["stop_reason"],
+                                raw_response=trial_data["raw_response"],
+                                moves_output=trial_data["moves_output"],
+                                moves_required=trial_data["moves_required"],
+                                first_error_move=trial_data["first_error_move"],
+                                latency_ms=trial_data["latency_ms"],
                             )
                             insert_trial(output_db, trial)
                             inserted += 1
