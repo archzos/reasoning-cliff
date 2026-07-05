@@ -36,6 +36,16 @@
 - Failures disappear or shrink with higher output budgets (token-starvation evidence)
 - Relative shift in collapse threshold under `STANDARD` vs `STEPWISE` conditions
 
+## Claim boundary matrix
+
+| Claim type | Allowed | Required evidence |
+| --- | --- | --- |
+| Budget-confound claim (`TOKEN_STARVED`) | Yes | DEFAULT fails and UNCAPPED has at least one correct trial in same cell |
+| Genuine collapse claim | Yes | DEFAULT fails and UNCAPPED also fails in same cell |
+| Prompting-shift claim | Yes | Same model/puzzle/budget settings across `STANDARD` and `STEPWISE` |
+| "Model cannot reason" claim | No | Out of scope for this harness design |
+| Broad production readiness claim | No | Not measured by these tasks/metrics |
+
 ### Concrete examples of valid claims
 
 - "For `hanoi`, `gpt-4o` at `n=8` is `TOKEN_STARVED` because DEFAULT failed and UNCAPPED passed."
@@ -65,6 +75,9 @@ Per `(model, puzzle, complexity, condition)` cell:
 
 These are mutually exclusive labels in analysis slices and must not be merged
 into a single "failure" bucket.
+
+If a row satisfies multiple heuristics during raw parsing, the classifier must
+emit only one final label using the configured precedence path.
 
 ## Example row-level interpretation
 
