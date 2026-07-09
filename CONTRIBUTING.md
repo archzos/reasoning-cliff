@@ -13,6 +13,24 @@ pip install -e .[dev]
 pytest
 ```
 
+## First contribution quickstart
+
+Use this sequence to open your first PR without additional context:
+
+```bash
+git checkout -b fix/short-issue-slug
+# make changes
+pytest
+git add -A
+git commit -m "type: concise change summary"
+git push -u origin HEAD
+```
+
+Then open a PR that includes:
+- what changed
+- why the change is needed
+- how it was validated (`pytest` output summary)
+
 ## Contribution workflow
 
 1. Fork the repo and create a branch from `main`.
@@ -28,6 +46,7 @@ pytest
 - [ ] Methodology behavior documented (if changed)
 - [ ] README/docs updated (if user-facing behavior changed)
 - [ ] No secrets or credentials introduced
+- [ ] Security-impact notes included (if touching execution/runtime surfaces)
 
 ## Code style guidance
 
