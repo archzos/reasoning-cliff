@@ -19,30 +19,57 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Mirror Branches And Tags
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          MIRROR_PAT: ${{ secrets.PERSONAL_MIRROR_PAT }}
         run: |
           set -euo pipefail
+          if [ -z "${MIRROR_PAT:-}" ]; then
+            echo "PERSONAL_MIRROR_PAT is empty or unavailable"
+            exit 1
+          fi
+          code=$(curl -sS -o /tmp/ghrepo.json -w "%{http_code}" -H "Authorization: token ${MIRROR_PAT}" https://api.github.com/repos/anuj-archzos/${{ github.event.repository.name }})
+          echo "github_api_status=${code}"
+          if [ "$code" != "200" ]; then
+            cat /tmp/ghrepo.json
+            exit 1
+          fi
+          git config --unset-all http.https://github.com/.extraheader || true
           git config user.name "archzos-mirror-bot"
           git config user.email "actions@users.noreply.github.com"
-          git remote add personal "https://x-access-token:${{ secrets.PERSONAL_MIRROR_PAT }}@github.com/anuj-archzos/${{ github.event.repository.name }}.git"
+          git remote set-url origin "https://x-access-token:${MIRROR_PAT}@github.com/${{ github.repository }}.git"
+          git remote add personal "https://x-access-token:${MIRROR_PAT}@github.com/anuj-archzos/${{ github.event.repository.name }}.git"
           git fetch --prune origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*"
-          git push --prune personal "refs/remotes/origin/*:refs/heads/*"
-          git push --prune personal "refs/tags/*:refs/tags/*"
+          git push --force --prune personal "refs/remotes/origin/*:refs/heads/*"
+          git push --force --prune personal "refs/tags/*:refs/tags/*"
 
       - name: Mirror Branch Deletion
         if: github.event_name == 'delete' && github.event.ref_type == 'branch'
+        env:
+          MIRROR_PAT: ${{ secrets.PERSONAL_MIRROR_PAT }}
         run: |
           set -euo pipefail
+          if [ -z "${MIRROR_PAT:-}" ]; then
+            echo "PERSONAL_MIRROR_PAT is empty or unavailable"
+            exit 1
+          fi
           git init .
-          git remote add personal "https://x-access-token:${{ secrets.PERSONAL_MIRROR_PAT }}@github.com/anuj-archzos/${{ github.event.repository.name }}.git"
+          git remote add personal "https://x-access-token:${MIRROR_PAT}@github.com/anuj-archzos/${{ github.event.repository.name }}.git"
           git push personal ":refs/heads/${{ github.event.ref }}"
 
       - name: Mirror Tag Deletion
         if: github.event_name == 'delete' && github.event.ref_type == 'tag'
+        env:
+          MIRROR_PAT: ${{ secrets.PERSONAL_MIRROR_PAT }}
         run: |
           set -euo pipefail
+          if [ -z "${MIRROR_PAT:-}" ]; then
+            echo "PERSONAL_MIRROR_PAT is empty or unavailable"
+            exit 1
+          fi
           git init .
-          git remote add personal "https://x-access-token:${{ secrets.PERSONAL_MIRROR_PAT }}@github.com/anuj-archzos/${{ github.event.repository.name }}.git"
+          git remote add personal "https://x-access-token:${MIRROR_PAT}@github.com/anuj-archzos/${{ github.event.repository.name }}.git"
           git push personal ":refs/tags/${{ github.event.ref }}"
