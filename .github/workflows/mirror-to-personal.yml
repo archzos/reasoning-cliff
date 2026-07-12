@@ -1,0 +1,47 @@
+name: Mirror To Personal
+
+on:
+  push:
+    branches: ['**']
+    tags: ['**']
+  delete:
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        if: github.event_name == 'push'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Mirror Branches And Tags
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          git config user.name "archzos-mirror-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git remote add personal "https://x-access-token:${{ secrets.PERSONAL_MIRROR_PAT }}@github.com/anuj-archzos/${{ github.event.repository.name }}.git"
+          git fetch --prune origin "+refs/heads/*:refs/remotes/origin/*" "+refs/tags/*:refs/tags/*"
+          git push --prune personal "refs/remotes/origin/*:refs/heads/*"
+          git push --prune personal "refs/tags/*:refs/tags/*"
+
+      - name: Mirror Branch Deletion
+        if: github.event_name == 'delete' && github.event.ref_type == 'branch'
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add personal "https://x-access-token:${{ secrets.PERSONAL_MIRROR_PAT }}@github.com/anuj-archzos/${{ github.event.repository.name }}.git"
+          git push personal ":refs/heads/${{ github.event.ref }}"
+
+      - name: Mirror Tag Deletion
+        if: github.event_name == 'delete' && github.event.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add personal "https://x-access-token:${{ secrets.PERSONAL_MIRROR_PAT }}@github.com/anuj-archzos/${{ github.event.repository.name }}.git"
+          git push personal ":refs/tags/${{ github.event.ref }}"
